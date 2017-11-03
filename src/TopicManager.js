@@ -10,63 +10,79 @@ module.exports = function(client, connection) {
         return messageType + '/' + name;
     }
 
-    var listen = function(ros, name, messageType, signature) {
-        var listener = new ROSLIB.Topic({
-            ros: ros,
-            name: name,
-            messageType: messageType
-        });
-        registeredTopics[signature].listener = listener;
-        registeredTopics[signature].listener.subscribe(function(message) {
-            var numHandlers = registeredTopics[signature].handlers.length;
+    var getTopic = function(name, messageType) {
+        var signature = getSignature(name, messageType);
+        var topic = registeredTopics[signature]
+
+        if (!topic) {
+            topic = registeredTopics[signature] = {
+                options: { name: name, messageType: messageType },
+                instance: undefined,
+                handlers: []
+            };
+        }
+
+        return topic
+    }
+
+    var getTopicInstance = function(ros, name, messageType) {
+        var topic = getTopic(name, messageType);
+
+        if (!topic.instance) {
+            topic.instance = new ROSLIB.Topic({
+                ros: ros,
+                name: name,
+                messageType: messageType
+            });
+        }
+
+        return topic.instance
+    }
+
+    var listen = function(ros, name, messageType) {
+        var instance = getTopicInstance(ros, name, messageType);
+
+        instance.subscribe(function(message) {
+            var topic = getTopic(name, messageType)
+            var numHandlers = topic.handlers.length;
+
             for (var i = 0; i < numHandlers; i++) {
                 // Actually invoke topic handlers
-                registeredTopics[signature].handlers[i](message);
+                topic.handlers[i](message);
             }
         });
     };
 
-    var connectAndListen = function(name, messageType, signature) {
+    var connectAndListen = function(name, messageType) {
         return connection.getInstance().then(function(ros) {
-            listen(ros, name, messageType, signature);
+            listen(ros, name, messageType);
         });
     };
 
     this.publish = function(name, messageType, payload) {
         return connection.getInstance().then(function(ros) {
-            var topic = new ROSLIB.Topic({
-                ros: ros,
-                name: name,
-                messageType: messageType
-            });
             var message = new ROSLIB.Message(payload);
-            topic.publish(message);
+
+            getTopicInstance(ros, name, messageType).publish(message);
         });
     };
 
     this.subscribe = function(name, messageType, handler) {
-        var signature = getSignature(name, messageType);
-        if (signature in registeredTopics) {
-            // Push to existing handlers
-            registeredTopics[signature].handlers.push(handler);
-        } else {
-            // Create handler array and start topic subscription
-            registeredTopics[signature] = {
-                options: { name: name, messageType: messageType },
-                listener: undefined,
-                handlers: [handler]
-            };
-            connectAndListen(name, messageType, signature);
-        }
+        var topic = getTopic(name, messageType)
+
+        topic.handlers.push(handler)
+        // Start topic subscription
+        connectAndListen(name, messageType);
+
         return {
             dispose: function() {
-                var index = registeredTopics[signature].handlers.indexOf(handler);
+                var index = topic.handlers.indexOf(handler);
                 if (index !== -1) {
-                    registeredTopics[signature].handlers.splice(index, 1);
+                    topic.handlers.splice(index, 1);
                     // Close the topic, because no handlers are left
-                    if (!registeredTopics[signature].handlers.length && registeredTopics[signature].listener) {
-                        registeredTopics[signature].listener.unsubscribe();
-                        registeredTopics[signature].listener = null;
+                    if (!topic.handlers.length && topic.instance) {
+                        topic.instance.unsubscribe();
+                        topic.instance = null;
                     }
                 }
             }
@@ -74,12 +90,12 @@ module.exports = function(client, connection) {
     };
 
     client.on(constants.EVENT_DISCONNECTED, function() {
-        // Dispose all topic listeners (not handlers!)
+        // Dispose all topic instances
         for (signature in registeredTopics) {
             var topic = registeredTopics[signature];
-            if (topic.listener) {
-                topic.listener.unsubscribe();
-                topic.listener = null;
+            if (topic.instance) {
+                topic.instance.unsubscribe();
+                topic.instance = null;
             }
         }
     });
@@ -88,9 +104,9 @@ module.exports = function(client, connection) {
         // Reconnect disconnected handlers
         for (signature in registeredTopics) {
             var topic = registeredTopics[signature];
-            if (topic.listener === null && topic.handlers.length) {
+            if (topic.instance === null && topic.handlers.length) {
                 listen(ros, topic.options.name, topic.options.messageType, signature);
-                topic.listener = null;
+                topic.instance = null;
             }
         }
     });
