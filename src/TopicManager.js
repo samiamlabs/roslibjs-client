@@ -25,8 +25,10 @@ module.exports = function(client, connection) {
         return topic
     }
 
-    var getTopicInstance = function(ros, name, messageType) {
+    var getTopicInstance = function(ros, name, messageType, compresson) {
         var topic = getTopic(name, messageType);
+
+        compression = compression || 'none';
 
         if (!topic.instance) {
             topic.instance = new ROSLIB.Topic({
@@ -40,10 +42,12 @@ module.exports = function(client, connection) {
     }
 
     var listen = function(ros, name, messageType) {
-        var instance = getTopicInstance(ros, name, messageType);
+        var instance = getTopicInstance(ros, name, messageType, compression);
+
+        compression = compression || 'none';
 
         instance.subscribe(function(message) {
-            var topic = getTopic(name, messageType)
+            var topic = getTopic(name, messageType, compression)
             var numHandlers = topic.handlers.length;
 
             for (var i = 0; i < numHandlers; i++) {
