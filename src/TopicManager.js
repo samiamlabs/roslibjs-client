@@ -25,7 +25,7 @@ module.exports = function(client, connection) {
         return topic
     }
 
-    var getTopicInstance = function(ros, name, messageType, compresson) {
+    var getTopicInstance = function(ros, name, messageType, compression) {
         compression = compression || 'none';
 
         var topic = getTopic(name, messageType);
