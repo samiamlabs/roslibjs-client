@@ -25,9 +25,10 @@ module.exports = function(client, connection) {
         return topic
     }
 
-    var getTopicInstance = function(ros, name, messageType, compression) {
+    var getTopicInstance = function(ros, name, messageType, compression, throttleRate) {
         compression = compression || 'none';
-
+        throttleRate = throttleRate || 0;
+        
         var topic = getTopic(name, messageType);
 
         if (!topic.instance) {
@@ -36,16 +37,18 @@ module.exports = function(client, connection) {
                 name: name,
                 messageType: messageType,
                 compression: compression,
+                throttle_rate: throttleRate,
             });
         }
 
         return topic.instance
     }
 
-    var listen = function(ros, name, messageType, compression) {
+    var listen = function(ros, name, messageType, compression, throttleRate) {
         compression = compression || 'none';
+        throttleRate = throttleRate || 0;
 
-        var instance = getTopicInstance(ros, name, messageType, compression);
+        var instance = getTopicInstance(ros, name, messageType, compression, throttleRate);
 
 
         instance.subscribe(function(message) {
